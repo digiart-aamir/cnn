@@ -1,6 +1,6 @@
 import os
-import streamlit as st
 import numpy as np
+from flask import Flask, render_template, request
 from PIL import Image, ImageOps
 import tensorflow as tf
 
@@ -8,36 +8,47 @@ import tensorflow as tf
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# ✅ Load your trained model (trained on 24x24 grayscale images)
+# ✅ Load model
 model = tf.keras.models.load_model('digit_classifier_final_10.h5')
 
-# ✅ Streamlit UI
-st.set_page_config(page_title="Digit Recognition", page_icon="✍️")
-st.title("🧠 Handwritten Digit Classifier")
-st.write("Upload a **24x24 grayscale** digit image for prediction.")
+# ✅ Flask setup
+app = Flask(__name__)
 
-# ✅ Upload image file
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+# ✅ Home Route
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("L")  # Convert to grayscale
-    st.image(image, caption='Uploaded Image', width=150)
+# ✅ Prediction Route
+@app.route('/predict', methods=['POST'])
+def predict():
+    if 'file' not in request.files:
+        return render_template('index.html', message="No file uploaded")
 
-    # ✅ Resize to 24x24 (match model input)
-    img_resized = image.resize((24, 24))
-    img_array = np.array(img_resized)
+    file = request.files['file']
 
-    # ✅ Normalize and reshape
+    if file.filename == '':
+        return render_template('index.html', message="No selected file")
+
+    # ✅ Read and preprocess the image
+    image = Image.open(file).convert("L")
+    image = image.resize((24, 24))
+    img_array = np.array(image)
     img_normalized = img_array / 255.0
     img_input = img_normalized.reshape(1, 24, 24, 1)
 
-    # ✅ Make prediction
+    # ✅ Predict
     prediction = model.predict(img_input)
     predicted_digit = np.argmax(prediction)
 
-    # ✅ Show result
-    st.success(f"Predicted Digit: **{predicted_digit}**")
-    st.bar_chart(prediction[0])
+    # ✅ Send result to page
+    confidence = [f"{p:.2%}" for p in prediction[0]]
 
-else:
-    st.info("Upload a digit image to get prediction.")
+    return render_template('index.html',
+                           message=f"Predicted Digit: {predicted_digit}",
+                           confidence=confidence,
+                           digit=predicted_digit)
+
+# ✅ Run app
+if __name__ == '__main__':
+    app.run(debug=True)
